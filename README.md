@@ -1,4 +1,4 @@
-# 🧠 Anonymous War Room
+# 🧠 Shadow Vote Arena
 
 **Let the Internet decide your fate.**
 
@@ -37,11 +37,7 @@ So I built a platform where strangers anonymously vote on your life decisions in
 
 ## 🌐 Live Demo
 
-Coming soon...
-
-## 📸 Screenshots
-
-*(Add screenshots/gifs here once available)*
+https://shadow-vote-arena.vercel.app/
 
 ## ✨ Inspiration
 
