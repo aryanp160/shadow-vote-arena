@@ -349,7 +349,16 @@ export const questionsService = {
     );
     
     const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    const deletePromises = snapshot.docs.map(async (questionDoc) => {
+      // Delete messages subcollection first (Firestore doesn't delete subcollections automatically)
+      const messagesCollectionRef = collection(db, 'questions', questionDoc.id, 'messages');
+      const messagesSnapshot = await getDocs(messagesCollectionRef);
+      const deleteMessagesPromises = messagesSnapshot.docs.map(messageDoc => deleteDoc(messageDoc.ref));
+      await Promise.all(deleteMessagesPromises);
+
+      // Delete the question document
+      await deleteDoc(questionDoc.ref);
+    });
     await Promise.all(deletePromises);
   }
 };
