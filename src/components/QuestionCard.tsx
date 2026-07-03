@@ -311,7 +311,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 )}
                 <div ref={messagesEndRef} />
               </div>
-              </div>
 
               {/* Add Message Form */}
               <form onSubmit={handleSubmitMessage} className="flex gap-2 sm:gap-3">
