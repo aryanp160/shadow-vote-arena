@@ -105,7 +105,7 @@ export const StatsCard: React.FC = () => {
             <span className="text-green-400">👍 {stats.battleOfTheDay.yesVotes}</span>
             <span className="text-yellow-400">🤔 {stats.battleOfTheDay.maybeVotes}</span>
             <span className="text-red-400">👎 {stats.battleOfTheDay.noVotes}</span>
-            <span className="text-purple-400">💬 {stats.battleOfTheDay.messages.length}</span>
+            <span className="text-purple-400">💬 {stats.battleOfTheDay.messagesCount || 0}</span>
           </div>
         </div>
       )}

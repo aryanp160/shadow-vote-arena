@@ -29,6 +29,14 @@ export interface MessageReaction {
   timestamp: number;
 }
 
+export interface Message {
+  id: string;
+  text: string;
+  timestamp: number;
+  userId: string;
+  reactions?: MessageReaction[];
+}
+
 export interface FirebaseQuestion {
   id: string;
   text: string;
@@ -36,13 +44,7 @@ export interface FirebaseQuestion {
   noVotes: number;
   maybeVotes: number;
   timestamp: number;
-  messages: Array<{
-    id: string;
-    text: string;
-    timestamp: number;
-    userId: string;
-    reactions?: MessageReaction[];
-  }>;
+  messagesCount: number;
   voters: string[];
   activityScore: number;
   isHot: boolean;
@@ -66,7 +68,7 @@ const calculateActivityScore = (question: FirebaseQuestion): number => {
   if (questionAge > oneDayMs) return 0;
   
   const totalVotes = question.yesVotes + question.noVotes + question.maybeVotes;
-  const recentMessages = question.messages.filter(msg => (now - msg.timestamp) < oneDayMs).length;
+  const recentMessages = question.messagesCount || 0;
   
   // Weight votes more heavily than messages
   const score = (totalVotes * 3) + (recentMessages * 2);
@@ -232,6 +234,27 @@ export const questionsService = {
     );
   },
 
+  // Subscribe to messages of a question
+  subscribeToMessages: (
+    questionId: string,
+    callback: (messages: Message[]) => void,
+    limitCount: number = 50
+  ) => {
+    const q = query(
+      collection(db, 'questions', questionId, 'messages'),
+      orderBy('timestamp', 'asc'),
+      limit(limitCount)
+    );
+    
+    return onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Message));
+      callback(messages);
+    });
+  },
+
   // Add a new question
   addQuestion: async (text: string) => {
     await addDoc(collection(db, 'questions'), {
@@ -240,7 +263,7 @@ export const questionsService = {
       noVotes: 0,
       maybeVotes: 0,
       timestamp: Date.now(),
-      messages: [],
+      messagesCount: 0,
       voters: [],
       activityScore: 0,
       isHot: false,
@@ -273,40 +296,33 @@ export const questionsService = {
 
   // Add a message to a question
   addMessage: async (questionId: string, messageText: string, userId: string) => {
-    const questionRef = doc(db, 'questions', questionId);
-    const newMessage = {
-      id: Date.now().toString(),
+    const messagesCollectionRef = collection(db, 'questions', questionId, 'messages');
+    await addDoc(messagesCollectionRef, {
       text: messageText,
       timestamp: Date.now(),
       userId,
       reactions: []
-    };
+    });
 
+    const questionRef = doc(db, 'questions', questionId);
     await updateDoc(questionRef, {
-      messages: arrayUnion(newMessage)
+      messagesCount: increment(1)
     });
   },
 
   // Add reaction to a message
   addMessageReaction: async (questionId: string, messageId: string, reactionType: 'thumbsUp' | 'thumbsDown', userId: string) => {
-    const questionRef = doc(db, 'questions', questionId);
-    const questionDoc = await getDoc(questionRef);
+    const messageRef = doc(db, 'questions', questionId, 'messages', messageId);
+    const messageDoc = await getDoc(messageRef);
     
-    if (questionDoc.exists()) {
-      const data = questionDoc.data();
-      const messages = [...data.messages];
-      
-      const messageIndex = messages.findIndex(msg => msg.id === messageId);
-      if (messageIndex === -1) return false;
-      
-      const message = messages[messageIndex];
-      const reactions = message.reactions || [];
+    if (messageDoc.exists()) {
+      const data = messageDoc.data();
+      const reactions = (data.reactions || []) as MessageReaction[];
       
       // Check if user already reacted
       const existingReaction = reactions.find(r => r.userId === userId);
       if (existingReaction) return false;
       
-      // Add new reaction
       const newReaction: MessageReaction = {
         id: Date.now().toString(),
         messageId,
@@ -315,10 +331,9 @@ export const questionsService = {
         timestamp: Date.now()
       };
       
-      message.reactions = [...reactions, newReaction];
-      messages[messageIndex] = message;
-      
-      await updateDoc(questionRef, { messages });
+      await updateDoc(messageRef, {
+        reactions: arrayUnion(newReaction)
+      });
       return true;
     }
     

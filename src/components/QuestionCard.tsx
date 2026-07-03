@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Users, Clock, Flame, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { FirebaseQuestion, MessageReaction } from '@/services/firebase';
+import { FirebaseQuestion, MessageReaction, Message, questionsService } from '@/services/firebase';
 
 interface QuestionCardProps {
   question: FirebaseQuestion;
@@ -21,15 +21,29 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [showChat, setShowChat] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [timeElapsed, setTimeElapsed] = useState(0);
-  const [visibleMessages, setVisibleMessages] = useState(5);
+  const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to messages subcollection
+  useEffect(() => {
+    if (!showChat) return;
+
+    const unsubscribe = questionsService.subscribeToMessages(
+      question.id,
+      (newMessages) => {
+        setMessages(newMessages);
+      }
+    );
+
+    return unsubscribe;
+  }, [question.id, showChat]);
 
   // Auto-scroll to newest messages
   useEffect(() => {
     if (showChat && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [question.messages, showChat]);
+  }, [messages, showChat]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -218,29 +232,28 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           )}
         </div>
 
-        {/* Chat Section */}
         <div className="border-t border-gray-700 pt-6">
           <button
             onClick={() => setShowChat(!showChat)}
             className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors font-bold mb-4"
           >
             <MessageSquare size={18} />
-            {question.messages.length} BATTLE COMMENTS
+            {question.messagesCount || 0} BATTLE COMMENTS
             <span className="text-xs bg-purple-600/30 px-2 py-1 rounded">
               {showChat ? 'HIDE' : 'SHOW'}
             </span>
           </button>
-
+ 
           {showChat && (
             <div className="space-y-4">
               {/* Messages */}
               <div className="max-h-60 overflow-y-auto space-y-3">
-                {question.messages.slice(0, visibleMessages).map((message) => {
+                {messages.slice(0, visibleMessages).map((message) => {
                   const reactions = message.reactions || [];
                   const thumbsUpCount = getReactionCount(reactions, 'thumbsUp');
                   const thumbsDownCount = getReactionCount(reactions, 'thumbsDown');
                   const userReacted = currentUserId ? hasUserReacted(reactions, currentUserId) : false;
-
+ 
                   return (
                     <div key={message.id} className="bg-black/60 border border-purple-400/30 rounded-lg p-3 backdrop-blur-sm">
                       <p className="text-gray-100 text-sm mb-2">{message.text}</p>
@@ -282,21 +295,22 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   );
                 })}
                 
-                {question.messages.length > visibleMessages && (
+                {messages.length > visibleMessages && (
                   <button
                     onClick={loadMoreMessages}
                     className="w-full bg-purple-900/30 hover:bg-purple-800/50 border border-purple-400/30 text-purple-400 py-2 rounded-lg text-sm font-bold transition-all"
                   >
-                    ↓ LOAD MORE COMMENTS ({question.messages.length - visibleMessages} remaining)
+                    ↓ LOAD MORE COMMENTS ({messages.length - visibleMessages} remaining)
                   </button>
                 )}
                 
-                {question.messages.length === 0 && (
+                {messages.length === 0 && (
                   <p className="text-gray-500 text-sm italic text-center py-6 bg-black/30 rounded-lg">
                     No battle comments yet. Be the first to strike!
                   </p>
                 )}
                 <div ref={messagesEndRef} />
+              </div>
               </div>
 
               {/* Add Message Form */}
