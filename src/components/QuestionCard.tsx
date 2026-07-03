@@ -22,6 +22,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [userVote, setUserVote] = useState<'yes' | 'no' | 'maybe' | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Subscribe to messages subcollection
@@ -54,12 +55,31 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     return () => clearInterval(timer);
   }, [question.timestamp]);
 
+  // Subscribe to user's vote on this question
+  useEffect(() => {
+    if (!currentUserId) {
+      setUserVote(null);
+      return;
+    }
+    const unsubscribe = questionsService.subscribeToUserVote(
+      question.id,
+      currentUserId,
+      (vote) => {
+        setUserVote(vote);
+      }
+    );
+    return unsubscribe;
+  }, [question.id, currentUserId]);
+
   const totalVotes = question.yesVotes + question.noVotes + question.maybeVotes;
   const yesPercentage = totalVotes > 0 ? Math.round((question.yesVotes / totalVotes) * 100) : 0;
   const noPercentage = totalVotes > 0 ? Math.round((question.noVotes / totalVotes) * 100) : 0;
   const maybePercentage = totalVotes > 0 ? Math.round((question.maybeVotes / totalVotes) * 100) : 0;
-
-  const hasUserVoted = currentUserId && question.voters?.includes(currentUserId);
+ 
+  const hasUserVoted = !!userVote;
+  const isYesSelected = userVote === 'yes';
+  const isNoSelected = userVote === 'no';
+  const isMaybeSelected = userVote === 'maybe';
   const isControversial = totalVotes >= 5 && Math.abs(yesPercentage - noPercentage) < 40;
 
   const handleSubmitMessage = (e: React.FormEvent) => {
@@ -139,7 +159,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </h3>
         </div>
 
-        {/* Battle Voting Section */}
         <div className="mb-6">
           <div className="grid grid-cols-3 gap-3 mb-6">
             <button
@@ -147,7 +166,9 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               disabled={hasUserVoted}
               className={`group relative py-4 px-3 rounded-xl font-black text-lg transition-all duration-300 transform border-2 ${
                 hasUserVoted 
-                  ? 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed' 
+                  ? isYesSelected
+                    ? 'bg-green-950/50 border-green-400 text-green-400 shadow-md shadow-green-500/20'
+                    : 'bg-gray-900/40 border-gray-800 text-gray-600 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-br from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 border-green-400 text-white hover:scale-105 shadow-lg hover:shadow-green-500/50'
               }`}
             >
@@ -158,13 +179,15 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <div className="absolute inset-0 bg-green-400/20 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity -z-10"></div>
               )}
             </button>
-
+ 
             <button
               onClick={() => onVote(question.id, 'maybe')}
               disabled={hasUserVoted}
               className={`group relative py-4 px-3 rounded-xl font-black text-lg transition-all duration-300 transform border-2 ${
                 hasUserVoted 
-                  ? 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed' 
+                  ? isMaybeSelected
+                    ? 'bg-yellow-950/50 border-yellow-400 text-yellow-400 shadow-md shadow-yellow-500/20'
+                    : 'bg-gray-900/40 border-gray-800 text-gray-600 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-br from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 border-yellow-400 text-white hover:scale-105 shadow-lg hover:shadow-yellow-500/50'
               }`}
             >
@@ -175,13 +198,15 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <div className="absolute inset-0 bg-yellow-400/20 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity -z-10"></div>
               )}
             </button>
-
+ 
             <button
               onClick={() => onVote(question.id, 'no')}
               disabled={hasUserVoted}
               className={`group relative py-4 px-3 rounded-xl font-black text-lg transition-all duration-300 transform border-2 ${
                 hasUserVoted 
-                  ? 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed' 
+                  ? isNoSelected
+                    ? 'bg-red-950/50 border-red-400 text-red-400 shadow-md shadow-red-500/20'
+                    : 'bg-gray-900/40 border-gray-800 text-gray-600 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-br from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 border-red-400 text-white hover:scale-105 shadow-lg hover:shadow-red-500/50'
               }`}
             >

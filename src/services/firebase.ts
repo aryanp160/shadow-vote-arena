@@ -9,6 +9,7 @@ import {
   updateDoc, 
   arrayUnion,
   getDoc,
+  setDoc,
   increment,
   where,
   getDocs,
@@ -45,7 +46,6 @@ export interface FirebaseQuestion {
   maybeVotes: number;
   timestamp: number;
   messagesCount: number;
-  voters: string[];
   activityScore: number;
   isHot: boolean;
   isBattleOfTheDay: boolean;
@@ -217,11 +217,15 @@ export const questionsService = {
     };
   },
 
-  // Search questions by text
+  // Search questions by text (scalable: limit to 100 most recent questions)
   searchQuestions: async (searchTerm: string) => {
     if (!searchTerm.trim()) return [];
     
-    const q = query(collection(db, 'questions'), orderBy('timestamp', 'desc'));
+    const q = query(
+      collection(db, 'questions'), 
+      orderBy('timestamp', 'desc'),
+      limit(100)
+    );
     const snapshot = await getDocs(q);
     
     const questions = snapshot.docs.map(doc => ({
@@ -255,6 +259,22 @@ export const questionsService = {
     });
   },
 
+  // Subscribe to a user's vote on a specific question
+  subscribeToUserVote: (
+    questionId: string,
+    userId: string,
+    callback: (voteType: 'yes' | 'no' | 'maybe' | null) => void
+  ) => {
+    const voteRef = doc(db, 'questions', questionId, 'votes', userId);
+    return onSnapshot(voteRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback(docSnap.data().voteType as 'yes' | 'no' | 'maybe');
+      } else {
+        callback(null);
+      }
+    });
+  },
+
   // Add a new question
   addQuestion: async (text: string) => {
     await addDoc(collection(db, 'questions'), {
@@ -264,7 +284,6 @@ export const questionsService = {
       maybeVotes: 0,
       timestamp: Date.now(),
       messagesCount: 0,
-      voters: [],
       activityScore: 0,
       isHot: false,
       isBattleOfTheDay: false
@@ -273,25 +292,27 @@ export const questionsService = {
 
   // Vote on a question
   vote: async (questionId: string, voteType: 'yes' | 'no' | 'maybe', userId: string) => {
-    const questionRef = doc(db, 'questions', questionId);
-    const questionDoc = await getDoc(questionRef);
+    const voteRef = doc(db, 'questions', questionId, 'votes', userId);
+    const voteDoc = await getDoc(voteRef);
     
-    if (questionDoc.exists()) {
-      const data = questionDoc.data();
-      
-      if (data.voters?.includes(userId)) {
-        return false;
-      }
-
-      const voteField = voteType === 'yes' ? 'yesVotes' : voteType === 'no' ? 'noVotes' : 'maybeVotes';
-      await updateDoc(questionRef, {
-        [voteField]: increment(1),
-        voters: arrayUnion(userId)
-      });
-      
-      return true;
+    if (voteDoc.exists()) {
+      return false; // User has already voted
     }
-    return false;
+
+    // Record the user's vote
+    await setDoc(voteRef, {
+      voteType,
+      timestamp: Date.now()
+    });
+
+    // Update parent counters
+    const questionRef = doc(db, 'questions', questionId);
+    const voteField = voteType === 'yes' ? 'yesVotes' : voteType === 'no' ? 'noVotes' : 'maybeVotes';
+    await updateDoc(questionRef, {
+      [voteField]: increment(1)
+    });
+    
+    return true;
   },
 
   // Add a message to a question
@@ -350,13 +371,19 @@ export const questionsService = {
     
     const snapshot = await getDocs(q);
     const deletePromises = snapshot.docs.map(async (questionDoc) => {
-      // Delete messages subcollection first (Firestore doesn't delete subcollections automatically)
+      // 1. Delete messages subcollection
       const messagesCollectionRef = collection(db, 'questions', questionDoc.id, 'messages');
       const messagesSnapshot = await getDocs(messagesCollectionRef);
       const deleteMessagesPromises = messagesSnapshot.docs.map(messageDoc => deleteDoc(messageDoc.ref));
       await Promise.all(deleteMessagesPromises);
 
-      // Delete the question document
+      // 2. Delete votes subcollection
+      const votesCollectionRef = collection(db, 'questions', questionDoc.id, 'votes');
+      const votesSnapshot = await getDocs(votesCollectionRef);
+      const deleteVotesPromises = votesSnapshot.docs.map(voteDoc => deleteDoc(voteDoc.ref));
+      await Promise.all(deleteVotesPromises);
+
+      // 3. Delete the parent question document
       await deleteDoc(questionDoc.ref);
     });
     await Promise.all(deletePromises);
