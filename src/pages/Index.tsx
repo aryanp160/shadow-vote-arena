@@ -17,6 +17,7 @@ const Index = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [currentSort, setCurrentSort] = useState<'newest' | 'trending' | 'controversial'>('newest');
+  const [limitCount, setLimitCount] = useState(10);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
@@ -25,15 +26,16 @@ const Index = () => {
     if (!user) return;
 
     const unsubscribe = questionsService.subscribeToQuestions(
-      (questions) => {
-        setQuestions(questions);
+      (loadedQuestions) => {
+        setQuestions(loadedQuestions);
+        setHasMore(loadedQuestions.length === limitCount);
       },
       currentSort,
-      50 // Load more initially for better UX
+      limitCount
     );
 
     return unsubscribe;
-  }, [user, currentSort]);
+  }, [user, currentSort, limitCount]);
 
   // Clean up old questions on app load
   useEffect(() => {
@@ -109,22 +111,13 @@ const Index = () => {
 
   const handleSortChange = (sort: 'newest' | 'trending' | 'controversial') => {
     setCurrentSort(sort);
+    setLimitCount(10);
     setHasMore(true);
   };
 
-  const loadMoreQuestions = async () => {
+  const loadMoreQuestions = () => {
     if (loadingMore || !hasMore || isSearchMode) return;
-    
-    setLoadingMore(true);
-    try {
-      // For now, we'll just increase the limit in the subscription
-      // In a real app, you'd implement proper pagination
-      console.log('Loading more questions...');
-    } catch (error) {
-      console.error('Error loading more questions:', error);
-    } finally {
-      setLoadingMore(false);
-    }
+    setLimitCount(prev => prev + 10);
   };
 
   const displayQuestions = isSearchMode ? searchResults : questions;
